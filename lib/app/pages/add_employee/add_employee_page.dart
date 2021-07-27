@@ -1,5 +1,7 @@
 import 'package:estudo_form/app/shared/employee.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AddEmployeePage extends StatefulWidget {
   const AddEmployeePage({Key? key}) : super(key: key);
@@ -14,15 +16,20 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _sectorController = TextEditingController();
   final TextEditingController _healthController = TextEditingController();
+  final TextEditingController _workStartController = TextEditingController();
+  final TextEditingController _workEndController = TextEditingController();
+  final TapGestureRecognizer _tapRecognizer = TapGestureRecognizer();
+  final String url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
   Gender currentGender = Gender.Undisclosed;
   Sector currentSector = Sector.Administration;
   Set<HealthRecord> currentHealthRecord = {};
-  bool isOutsourced = false;
   bool hadHealthProblem = false;
   bool agreementAccepted = false;
   double levelValue = 0.0;
   ExperienceLevel currentLevel = ExperienceLevel.Trainee;
   DateTime dateOfBirth = DateTime.now();
+  TimeOfDay workStartTime = TimeOfDay.now();
+  TimeOfDay workEndTime = TimeOfDay.now();
 
   @override
   void dispose() {
@@ -30,6 +37,9 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
     _dateController.dispose();
     _sectorController.dispose();
     _healthController.dispose();
+    _workStartController.dispose();
+    _workEndController.dispose();
+    _tapRecognizer.dispose();
     super.dispose();
   }
 
@@ -39,6 +49,53 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
       final int levelIndex = int.parse(levelValue.toString()[0]);
       currentLevel = ExperienceLevel.values[levelIndex];
     });
+  }
+
+  void _openAgreementUrl() async {
+    try {
+      if (await canLaunch(url)) {
+        await launch(url);
+      }
+    } catch (e) {
+      print(e);
+    }
+  }
+
+  String? _validateTextField(String? inputText) {
+    if ((inputText == null) || (inputText.isEmpty)) {
+      return 'This field can\'t be left blank';
+    }
+
+    return null;
+  }
+
+  void _submitForm() {
+    if (_formKey.currentState!.validate() && agreementAccepted) {
+      final Employee employee = _createEmployee();
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            content: Text('$employee'),
+          );
+        },
+      );
+    }
+  }
+
+  Employee _createEmployee() {
+    Employee employee = Employee();
+    employee.name = _nameController.text;
+    employee.gender = currentGender;
+    employee.dateOfBirth = dateOfBirth;
+    employee.sector = currentSector;
+    employee.workingHoursStart = workStartTime;
+    employee.workingHoursEnd = workEndTime;
+    employee.healthRecord = hadHealthProblem ? currentHealthRecord : {};
+    employee.level = currentLevel;
+    employee.agreementAccepted = agreementAccepted;
+    employee.agreementDate = DateTime.now();
+    return employee;
   }
 
   @override
@@ -52,6 +109,8 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
             children: [
               TextFormField(
                 autofocus: true,
+                controller: _nameController,
+                validator: _validateTextField,
                 decoration: InputDecoration(
                   border: UnderlineInputBorder(),
                   labelText: 'Name',
@@ -70,11 +129,10 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                     Flexible(
                       flex: 4,
                       child: DropdownButtonFormField<Gender>(
-                        hint: Text('Gender'),
                         items: Gender.values
                             .map<DropdownMenuItem<Gender>>(
                               (gender) => DropdownMenuItem(
-                                child: Text(gender.toString()),
+                                child: Text(gender.toString().split('.').last),
                                 value: gender,
                               ),
                             )
@@ -99,14 +157,11 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                       flex: 3,
                       child: TextFormField(
                         controller: _dateController,
+                        validator: _validateTextField,
                         readOnly: true,
                         decoration: InputDecoration(
                           border: UnderlineInputBorder(),
                           labelText: 'Date of birth',
-                          hintText: 'Employee\'s date of birth...',
-                          hintStyle: TextStyle(
-                            fontStyle: FontStyle.italic,
-                          ),
                         ),
                         onTap: () async {
                           final date = await showDatePicker(
@@ -118,8 +173,10 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                           setState(() {
                             try {
                               _dateController.text =
-                                  date.toString().substring(0, 10);
-                            } catch (e) {}
+                                  '${date!.month}/${date.day}/${date.year}';
+                            } catch (e) {
+                              _dateController.text = '';
+                            }
                           });
                         },
                       ),
@@ -130,6 +187,7 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
               SizedBox(height: 16.0),
               TextFormField(
                 controller: _sectorController,
+                validator: _validateTextField,
                 readOnly: true,
                 decoration: InputDecoration(
                   border: UnderlineInputBorder(),
@@ -174,8 +232,69 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                     },
                   );
 
-                  _sectorController.text = currentSector.toString();
+                  _sectorController.text =
+                      currentSector.toString().split('.').last;
                 },
+              ),
+              SizedBox(height: 16.0),
+              SingleChildScrollView(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: <Widget>[
+                    Flexible(
+                      flex: 1,
+                      child: TextFormField(
+                        validator: _validateTextField,
+                        controller: _workStartController,
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          border: UnderlineInputBorder(),
+                          labelText: 'Working hours start',
+                        ),
+                        onTap: () async {
+                          final TimeOfDay? time = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.now(),
+                          );
+
+                          if (time != null) {
+                            workStartTime = time;
+                            _workStartController.text =
+                                '${time.hour}:${time.minute}';
+                          }
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: 32.0,
+                    ),
+                    Flexible(
+                      flex: 1,
+                      child: TextFormField(
+                        controller: _workEndController,
+                        validator: _validateTextField,
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          border: UnderlineInputBorder(),
+                          labelText: 'Working hours end',
+                        ),
+                        onTap: () async {
+                          final TimeOfDay? time = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.now(),
+                          );
+
+                          if (time != null) {
+                            workEndTime = time;
+                            _workEndController.text =
+                                '${time.hour}:${time.minute}';
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
               SizedBox(height: 16.0),
               Row(
@@ -246,7 +365,8 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                               onPressed: () {
                                 String text = '';
                                 currentHealthRecord.forEach((healthRecord) {
-                                  text += '$healthRecord, ';
+                                  text +=
+                                      '${healthRecord.toString().split('.').last}, ';
                                 });
                                 _healthController.text = text;
                                 Navigator.pop(context);
@@ -262,21 +382,6 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                 ),
               ),
               SizedBox(height: 16.0),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  Checkbox(
-                    value: isOutsourced,
-                    onChanged: (bool? value) {
-                      setState(() {
-                        isOutsourced = value!;
-                      });
-                    },
-                  ),
-                  Text('Is the employee outsourced?'),
-                ],
-              ),
-              SizedBox(height: 16.0),
               Text('Level: $currentLevel'),
               Slider(
                 max: ExperienceLevel.values.length - 1,
@@ -287,50 +392,60 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
               SizedBox(height: 16.0),
               Row(
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        'The employee has accepted to our ',
-                        maxLines: 2,
+                  Flexible(
+                    flex: 5,
+                    child: RichText(
+                      maxLines: 3,
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'The employee has accepted our ',
+                            style: TextStyle(
+                              color: Colors.black,
+                            ),
+                          ),
+                          TextSpan(
+                            text: 'agreement terms',
+                            style: TextStyle(
+                              color: Colors.blue[300],
+                            ),
+                            recognizer: _tapRecognizer
+                              ..onTap = _openAgreementUrl,
+                          ),
+                          TextSpan(
+                            text: '.',
+                            style: TextStyle(
+                              color: Colors.black,
+                            ),
+                          ),
+                        ],
                       ),
-                      TextButton(
-                        child: Text(
-                          'agreement terms',
-                          maxLines: 2,
-                        ),
-                        onPressed: () {
-                          showDialog(
-                              context: context,
-                              builder: (context) {
-                                return AlertDialog(
-                                  title: Text('Terms'),
-                                  content: Text(
-                                      'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer at neque pellentesque, aliquam lectus et, sollicitudin tortor. Curabitur id sem iaculis, tincidunt risus non, tristique urna.'),
-                                  actions: [
-                                    TextButton(
-                                      child: Text('Close'),
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                      },
-                                    ),
-                                  ],
-                                );
-                              });
-                        },
-                      ),
-                    ],
+                    ),
                   ),
-                  Switch(
-                    value: agreementAccepted,
-                    onChanged: (value) {
-                      setState(() {
-                        agreementAccepted = value;
-                      });
-                    },
+                  Flexible(
+                    flex: 1,
+                    child: Switch(
+                      value: agreementAccepted,
+                      onChanged: (value) {
+                        setState(() {
+                          agreementAccepted = value;
+                        });
+                      },
+                    ),
                   ),
                 ],
               ),
               SizedBox(height: 16.0),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton(
+                    style: ButtonStyle(),
+                    onPressed: _submitForm,
+                    child: Text('Submit'),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
